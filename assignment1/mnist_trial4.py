@@ -7,7 +7,6 @@ from __future__ import print_function
 # Imports
 import numpy as np
 import tensorflow as tf
-import matplotlib.pyplot as plt
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -40,7 +39,7 @@ def cnn_model_fn(features, labels, mode):
     # Dense Layer
     pool2_flat = tf.reshape(pool2, [-1, 7 * 7 * 64])
     dense = tf.layers.dense(inputs=pool2_flat, units=1024,
-        activation=tf.nn.relu)
+                            activation=tf.nn.relu)
     dropout = tf.layers.dropout(
         inputs=dense, rate=0.4, training=mode == tf.estimator.ModeKeys.TRAIN)
 
@@ -53,7 +52,7 @@ def cnn_model_fn(features, labels, mode):
         # Add `softmax_tensor` to the graph. It is used for PREDICT and by the
         # `logging_hook`.
         "probabilities": tf.nn.softmax(logits, name="softmax_tensor")
-        }
+    }
 
     if mode == tf.estimator.ModeKeys.PREDICT:
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
@@ -69,14 +68,13 @@ def cnn_model_fn(features, labels, mode):
         train_op = optimizer.minimize(
             loss=loss,
             global_step=tf.train.get_global_step())
-        print('\n loss:', loss , '\n')
         return tf.estimator.EstimatorSpec(
             mode=mode, loss=loss, train_op=train_op)
 
     # Add evaluation metrics (for EVAL mode)
     eval_metric_ops = {
-    "accuracy": tf.metrics.accuracy(
-        labels=labels, predictions=predictions["classes"])}
+        "accuracy": tf.metrics.accuracy(
+            labels=labels, predictions=predictions["classes"])}
     return tf.estimator.EstimatorSpec(
         mode=mode, loss=loss, eval_metric_ops=eval_metric_ops)
 
@@ -90,7 +88,7 @@ def main(unused_argv):
     eval_labels = np.asarray(mnist.test.labels, dtype=np.int32)
     # Create the Estimator
     mnist_classifier = tf.estimator.Estimator(
-        model_fn=cnn_model_fn, model_dir=" logs/mnist_trial")
+        model_fn=cnn_model_fn, model_dir="logs/mnist_1k_trial4")
     tensors_to_log = {"loss": "loss"}
     logging_hook = tf.train.LoggingTensorHook(
         tensors=tensors_to_log, every_n_iter=500)
@@ -101,7 +99,7 @@ def main(unused_argv):
         batch_size=100,
         num_epochs=None,
         shuffle=True)
-
+    
     # Evaluate the model and print results
     eval_input_fn = tf.estimator.inputs.numpy_input_fn(
         x={"x": eval_data},
@@ -109,61 +107,15 @@ def main(unused_argv):
         num_epochs=1,
         shuffle=False)
 
-    test_eval_fn = tf.estimator.inputs.numpy_input_fn(
-        x={"x": train_data},
-        y=train_labels,
-        num_epochs=1,
-        shuffle=False)
-
-    plt.figure(1)
-    plt.ion()
-
-    total_steps = []
-    eval_loss = []
-    eval_acc = []
-    
-    for i in range(3):
+    for i in range(5):
         mnist_classifier.train(
             input_fn=train_input_fn,
             #steps=20000,
-            steps = 20,
+            steps = 200,
             hooks=[logging_hook])
+        eval_results = mnist_classifier.evaluate(input_fn=eval_input_fn)
+        print(eval_results)
 
-        print ('\n')
-        step2 = mnist_classifier.get_variable_value("global_step")
-
-        eval_results = mnist_classifier.evaluate(input_fn=eval_input_fn)  
-        #print('eval results:', eval_results, '\n')
-        print('eval loss ', eval_results["loss"], 'step:',step2, '\n')
-        print('********','\n')
-
-        total_steps = np.append(total_steps,step2)
-        eval_loss = np.append(eval_loss, eval_results["loss"])
-        eval_acc = np.append(eval_acc, eval_results["accuracy"])
-        plt.plot(total_steps, eval_loss, 'xr')
-        plt.plot(total_steps, eval_acc, 'xy')
-        plt.draw()
-        plt.pause(0.005)
-
-    plt.ioff()
-    plt.figure(2)
-    plt.plot(total_steps, eval_loss, '-r')
-    plt.plot(total_steps, eval_acc, '-y')
-    plt.show()
-
-    lossFile = open('self_logs/eval_loss.txt','w')
-    accFile = open('self_logs/eval_acc.txt','w')
-    stepsFile = open('self_logs/steps_loss.txt','w')
-    for item in eval_loss:
-        lossFile.write("%f \n" %item)
-    lossFile.close()
-    for item in eval_acc:
-        accFile.write("%f \n" %item)
-    accFile.close()
-    for item in total_steps:
-        stepsFile.write("%f \n" %item)
-    stepsFile.close()
 
 if __name__ == "__main__":
     tf.app.run()
-    
