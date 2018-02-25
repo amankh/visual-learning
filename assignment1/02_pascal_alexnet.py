@@ -48,85 +48,108 @@ CLASS_NAMES = [
 
 
 def cnn_model_fn(features, labels, mode, num_classes=20):
-    # Write this function
+    '''
+    ALEXNET ARCHITECTURE:
+    -> image        [-1, 256, 256, 3]
+    -> data augmentation [-1,224,224,3]
+
+    -> conv(11, 4, 96, 'VALID')  [-1, 256-11/4 +1 , ]
+    -> relu()
+    -> max_pool(3, 2)
+    -> conv(5, 1, 256, 'SAME')
+    -> relu()
+    -> max_pool(3, 2)
+    -> conv(3, 1, 384, 'SAME')
+    -> relu()
+    -> conv(3, 1, 384, 'SAME')
+    -> relu()
+    -> conv(3, 1, 256, 'SAME')
+    -> max_pool(3, 2)
+    -> flatten()
+    -> fully_connected(4096)
+    -> relu()
+    -> dropout(0.5)
+    -> fully_connected(4096)
+    -> relu()
+    -> dropout(0.5)
+    -> fully_connected(20)
+    '''
+
     input_layer = tf.reshape(features["x"], [-1,256,256,3])
     weights = features["w"]
+
+
+    #data augmentation
+
 
     #conv layer1
     conv1 = tf.layers.conv2d(
         inputs= input_layer,
-        filters = 32,
-        kernel_size = [5,5],
-        padding= "same",
+        filters = 96,
+        strides = 4,
+        kernel_size = [11,11],
+        padding= "valid",
         activation = tf.nn.relu)
 
     #pool1
     pool1 = tf.layers.max_pooling2d(
         inputs=conv1,
-        pool_size =[2,2],
+        pool_size =[3,3],
         strides=2)
 
-    #conv2
+    #conv layer2
     conv2 = tf.layers.conv2d(
-        inputs = pool1,
-        filters = 64,
+        inputs= pool1,
+        filters = 256,
+        strides = 1,
         kernel_size = [5,5],
-        padding = "same",
+        padding= "same",
         activation = tf.nn.relu)
 
-    #pooling layer 2
+    #pool2
     pool2 = tf.layers.max_pooling2d(
-        inputs = conv2,
-        pool_size = [2,2],
-        strides = 2)
+        inputs=conv2,
+        pool_size =[3,3],
+        strides=2)
 
-    #dense layers
-    pool2_flat = tf.reshape(pool2, [-1, 64 * 64 * 64])
-    dense = tf.layers.dense(inputs=pool2_flat, units=1024,
-                            activation=tf.nn.relu)
-    dropout = tf.layers.dropout(
-        inputs=dense, rate=0.4, training=mode == tf.estimator.ModeKeys.TRAIN)
+    #conv layer3
+    conv3 = tf.layers.conv2d(
+        inputs= pool2,
+        filters = 384,
+        strides = 1,
+        kernel_size = [3,3],
+        padding= "same",
+        activation = tf.nn.relu)
 
-    # Logits Layer
-    logits = tf.layers.dense(inputs=dropout, units=20)
+    #conv layer4
+    conv4 = tf.layers.conv2d(
+        inputs= conv3,
+        filters = 384,
+        strides = 1,
+        kernel_size = [3,3],
+        padding= "same",
+        activation = tf.nn.relu)
+    
+    #conv layer5
+    conv5 = tf.layers.conv2d(
+        inputs= conv4,
+        filters = 256,
+        strides = 1,
+        kernel_size = [3,3],
+        padding= "same",
+        activation = tf.nn.relu)  ## check if activation is there or not
 
-    predictions = {
-        # Generate predictions (for PREDICT and EVAL mode)
-        "classes": tf.argmax(input=logits, axis=1),
-        # Add `softmax_tensor` to the graph. It is used for PREDICT and by the
-        # `logging_hook`.
-        "probabilities": tf.nn.sigmoid(logits, name="sigmoid_tensor")
-    }
 
-    if mode == tf.estimator.ModeKeys.PREDICT:
-        return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
+    #pool3
+    pool3 = tf.layers.max_pooling2d(
+        inputs=conv5,
+        pool_size =[3,3],
+        strides=2)
 
-    # Calculate Loss (for both TRAIN and EVAL modes)
-    #onehot_labels = tf.one_hot(indices=tf.cast(labels, tf.int32), depth=10)
-    loss = tf.identity(tf.losses.sigmoid_cross_entropy(
-        multi_class_labels=labels, logits=logits), name='loss')
 
-    # Configure the Training Op (for TRAIN mode)
-    if mode == tf.estimator.ModeKeys.TRAIN:
-        optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001)
-        train_op = optimizer.minimize(
-            loss=loss,
-            global_step=tf.train.get_global_step())
-        return tf.estimator.EstimatorSpec(
-            mode=mode, loss=loss, train_op=train_op)
 
-    # Add evaluation metrics (for EVAL mode)
-    eval_metric_ops = {"accuracy": tf.metrics.accuracy(labels=labels, predictions=predictions["classes"])}
-    '''
-    if mode == tf.estimator.ModeKeys.EVAL:
-        sess = tf.Session()
-        print("eval mode")
-        with sess.as_default():
-            #eval_metric_ops = {"mAP":np.mean(compute_map(labels.eval(), predictions['probabilities'].eval(),weights.eval(), average=None))}
-            eval_metric_ops = 0
-            print("hey")
-        sess.close()    
-'''
+
+    
     return tf.estimator.EstimatorSpec(
         mode=mode, loss=loss, eval_metric_ops=eval_metric_ops)
 
