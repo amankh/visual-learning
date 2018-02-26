@@ -49,38 +49,12 @@ CLASS_NAMES = [
 
 def cnn_model_fn(features, labels, mode, num_classes=20):
     '''
-    ALEXNET ARCHITECTURE:
+    VGG config D ARCHITECTURE:
     -> image        [-1, 256, 256, 3]
-    -> data augmentation [-1,224,224,3]
-
-    -> conv(11, 4, 96, 'VALID')  [-1, 256-11/4 +1 , ]
-    -> relu()
-    -> max_pool(3, 2)
-    -> conv(5, 1, 256, 'SAME')
-    -> relu()
-    -> max_pool(3, 2)
-    -> conv(3, 1, 384, 'SAME')
-    -> relu()
-    -> conv(3, 1, 384, 'SAME')
-    -> relu()
-    -> conv(3, 1, 256, 'SAME')
-    -> max_pool(3, 2)
-    -> flatten()
-    -> fully_connected(4096)
-    -> relu()
-    -> dropout(0.5)
-    -> fully_connected(4096)
-    -> relu()
-    -> dropout(0.5)
-    -> fully_connected(20)
     '''
 
     input_layer2 = tf.reshape(features["x"], [-1,256,256,3])
-    weights = features["w"]
-
-    
-
-    
+    weights = features["w"]    
     #data augmentation
     if mode == tf.estimator.ModeKeys.TRAIN:
         input_layer = tf.random_crop(input_layer2,
@@ -98,19 +72,27 @@ def cnn_model_fn(features, labels, mode, num_classes=20):
         input_layer = tf.image.crop_to_bounding_box(input_layer2,
             offset_height = 16, offset_width= 16,
             target_height = 224, target_width = 224)
-    
-    #print("il :",input_layer)
-    #print("il2 :",input_layer2)               
-
 
 
     #conv layer1
     conv1 = tf.layers.conv2d(
         inputs= input_layer,
-        filters = 96,
-        strides = 4,
-        kernel_size = [11,11],
-        padding= "valid",
+        filters = 64,
+        strides = 1,
+        kernel_size = [3,3],
+        padding= "same",
+        activation = tf.nn.relu,
+        use_bias = True,
+        bias_initializer = tf.zeros_initializer(),
+        kernel_initializer = tf.random_normal_initializer(0, 0.01))
+
+    #conv layer2
+    conv2 = tf.layers.conv2d(
+        inputs= conv1,
+        filters = 64,
+        strides = 1,
+        kernel_size = [3,3],
+        padding= "same",
         activation = tf.nn.relu,
         use_bias = True,
         bias_initializer = tf.zeros_initializer(),
@@ -118,32 +100,14 @@ def cnn_model_fn(features, labels, mode, num_classes=20):
 
     #pool1
     pool1 = tf.layers.max_pooling2d(
-        inputs=conv1,
-        pool_size =[3,3],
-        strides=2)
-
-    #conv layer2
-    conv2 = tf.layers.conv2d(
-        inputs= pool1,
-        filters = 256,
-        strides = 1,
-        kernel_size = [5,5],
-        padding= "same",
-        activation = tf.nn.relu,
-        use_bias = True,
-        bias_initializer = tf.zeros_initializer(),
-        kernel_initializer = tf.random_normal_initializer(0, 0.01))
-
-    #pool2
-    pool2 = tf.layers.max_pooling2d(
         inputs=conv2,
-        pool_size =[3,3],
+        pool_size =[2,2],
         strides=2)
 
     #conv layer3
     conv3 = tf.layers.conv2d(
-        inputs= pool2,
-        filters = 384,
+        inputs= pool1,
+        filters = 128,
         strides = 1,
         kernel_size = [3,3],
         padding= "same",
@@ -151,11 +115,10 @@ def cnn_model_fn(features, labels, mode, num_classes=20):
         use_bias = True,
         bias_initializer = tf.zeros_initializer(),
         kernel_initializer = tf.random_normal_initializer(0, 0.01))
-
     #conv layer4
     conv4 = tf.layers.conv2d(
-        inputs= conv3,
-        filters = 384,
+        inputs=conv3 ,
+        filters = 128,
         strides = 1,
         kernel_size = [3,3],
         padding= "same",
@@ -164,30 +127,143 @@ def cnn_model_fn(features, labels, mode, num_classes=20):
         bias_initializer = tf.zeros_initializer(),
         kernel_initializer = tf.random_normal_initializer(0, 0.01))
     
+    #pool2
+    pool2 = tf.layers.max_pooling2d(
+        inputs=conv4,
+        pool_size =[2,2],
+        strides=2)
+
     #conv layer5
     conv5 = tf.layers.conv2d(
-        inputs= conv4,
+        inputs= pool2,
         filters = 256,
         strides = 1,
         kernel_size = [3,3],
         padding= "same",
-        activation = tf.nn.relu,  ## check if activation is there or not
+        activation = tf.nn.relu,
+        use_bias = True,
+        bias_initializer = tf.zeros_initializer(),
+        kernel_initializer = tf.random_normal_initializer(0, 0.01))
+    
+    #conv layer6
+    conv6 = tf.layers.conv2d(
+        inputs= conv5,
+        filters = 256,
+        strides = 1,
+        kernel_size = [3,3],
+        padding= "same",
+        activation = tf.nn.relu,
         use_bias = True,
         bias_initializer = tf.zeros_initializer(),
         kernel_initializer = tf.random_normal_initializer(0, 0.01))
 
+    #conv layer7
+    conv7 = tf.layers.conv2d(
+        inputs= conv6,
+        filters = 256,
+        strides = 1,
+        kernel_size = [3,3],
+        padding= "same",
+        activation = tf.nn.relu,
+        use_bias = True,
+        bias_initializer = tf.zeros_initializer(),
+        kernel_initializer = tf.random_normal_initializer(0, 0.01))
     #pool3
     pool3 = tf.layers.max_pooling2d(
-        inputs=conv5,
-        pool_size =[3,3],
+        inputs=conv7,
+        pool_size =[2,2],
+        strides=2)
+
+    #conv layer8
+    conv8 = tf.layers.conv2d(
+        inputs= pool3,
+        filters = 512,
+        strides = 1,
+        kernel_size = [3,3],
+        padding= "same",
+        activation = tf.nn.relu,
+        use_bias = True,
+        bias_initializer = tf.zeros_initializer(),
+        kernel_initializer = tf.random_normal_initializer(0, 0.01))
+    
+    #conv layer9
+    conv9 = tf.layers.conv2d(
+        inputs= conv8,
+        filters = 512,
+        strides = 1,
+        kernel_size = [3,3],
+        padding= "same",
+        activation = tf.nn.relu,
+        use_bias = True,
+        bias_initializer = tf.zeros_initializer(),
+        kernel_initializer = tf.random_normal_initializer(0, 0.01))
+
+    #conv layer10
+    conv10 = tf.layers.conv2d(
+        inputs= conv9,
+        filters = 512,
+        strides = 1,
+        kernel_size = [3,3],
+        padding= "same",
+        activation = tf.nn.relu,
+        use_bias = True,
+        bias_initializer = tf.zeros_initializer(),
+        kernel_initializer = tf.random_normal_initializer(0, 0.01))
+    
+    #pool4
+    pool4 = tf.layers.max_pooling2d(
+        inputs=conv10,
+        pool_size =[2,2],
+        strides=2)
+
+    #conv layer11
+    conv11 = tf.layers.conv2d(
+        inputs= pool4,
+        filters = 512,
+        strides = 1,
+        kernel_size = [3,3],
+        padding= "same",
+        activation = tf.nn.relu,
+        use_bias = True,
+        bias_initializer = tf.zeros_initializer(),
+        kernel_initializer = tf.random_normal_initializer(0, 0.01))
+    
+    #conv layer12
+    conv12 = tf.layers.conv2d(
+        inputs= conv11,
+        filters = 512,
+        strides = 1,
+        kernel_size = [3,3],
+        padding= "same",
+        activation = tf.nn.relu,
+        use_bias = True,
+        bias_initializer = tf.zeros_initializer(),
+        kernel_initializer = tf.random_normal_initializer(0, 0.01))
+
+    #conv layer13
+    conv13 = tf.layers.conv2d(
+        inputs= conv12,
+        filters = 512,
+        strides = 1,
+        kernel_size = [3,3],
+        padding= "same",
+        activation = tf.nn.relu,
+        use_bias = True,
+        bias_initializer = tf.zeros_initializer(),
+        kernel_initializer = tf.random_normal_initializer(0, 0.01))
+    
+    #pool5
+    pool5 = tf.layers.max_pooling2d(
+        inputs=conv13,
+        pool_size =[2,2],
         strides=2)
 
     #flatten
-    pool3_flat = tf.reshape(pool3, [-1,5*5*256])
+    pool5_flat = tf.reshape(pool3, [-1,5*5*512])
 
     # fc layer 1
     dense1 = tf.layers.dense(
-        inputs = pool3_flat,
+        inputs = pool5_flat,
         units = 4096,
         activation = tf.nn.relu,
         use_bias = True,
@@ -199,8 +275,8 @@ def cnn_model_fn(features, labels, mode, num_classes=20):
         inputs = dense1,
         rate = 0.5,
         training = mode== tf.estimator.ModeKeys.TRAIN)
-
-    #fc layer 2
+    
+    # fc layer 2
     dense2 = tf.layers.dense(
         inputs = dropout1,
         units = 4096,
@@ -208,14 +284,29 @@ def cnn_model_fn(features, labels, mode, num_classes=20):
         use_bias = True,
         bias_initializer = tf.zeros_initializer(),
         kernel_initializer = tf.random_normal_initializer(0, 0.01))
-    
+
     #drropout2
-    dropout2 = tf.layers.dropout(
+    dropout2= tf.layers.dropout(
         inputs = dense2,
         rate = 0.5,
         training = mode== tf.estimator.ModeKeys.TRAIN)
+    
+    #fc layer 3
+    dense2 = tf.layers.dense(
+        inputs = dropout2,
+        units = 1000,
+        activation = tf.nn.relu,
+        use_bias = True,
+        bias_initializer = tf.zeros_initializer(),
+        kernel_initializer = tf.random_normal_initializer(0, 0.01))
+    
+    #drropout3
+    dropout2 = tf.layers.dropout(
+        inputs = dense3,
+        rate = 0.5,
+        training = mode== tf.estimator.ModeKeys.TRAIN)
 
-    #fc layer 2
+    #fc layer 4
     dense3 = tf.layers.dense(inputs = dropout2,units = 20,
         use_bias = True,
         bias_initializer = tf.zeros_initializer(),
