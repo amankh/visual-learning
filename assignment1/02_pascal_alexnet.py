@@ -17,11 +17,14 @@ from eval import compute_map
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
+plot_map = False
+log_map = True
+
 debug_data_loader = 0 # set to 1 to debug using prints
-test_cnn = 1# set to 1 to train/test only 20 images
-test_cnn_batch = 50
+test_cnn = 0# set to 1 to train/test only 20 images
+test_cnn_batch = 10
 BATCH_SIZE = 10
-NUM_ITERS = 10
+NUM_ITERS = 400
 
 CLASS_NAMES = [
     'aeroplane',
@@ -77,32 +80,25 @@ def cnn_model_fn(features, labels, mode, num_classes=20):
 
     input_layer2 = tf.reshape(features["x"], [-1,256,256,3])
     weights = features["w"]
-
-    
-
-    
+  
     #data augmentation
     if mode == tf.estimator.ModeKeys.TRAIN:
         input_layer = tf.random_crop(input_layer2,
             size = [BATCH_SIZE,224,224,3])
+        input_layer = tf.map_fn(lambda img: tf.image.random_flip_left_right(img), input_layer)
+        
+        '''
         unstacked_images = tf.unstack(input_layer, axis =0)
-        #print("unstack1:",unstacked_images)
         for img in unstacked_images:
             img = tf.image.random_flip_left_right(img)
+            img = tf.image.flip_left_right(img)
         input_layer = tf.stack(unstacked_images)
+        '''
 
     if mode == tf.estimator.ModeKeys.PREDICT:
-        print("predicting")
-        #input_layer = tf.image.central_crop(input_layer2, 224/256)
-            #size = [tf.shape(input_layer2)[0],224,224,3])
         input_layer = tf.image.crop_to_bounding_box(input_layer2,
             offset_height = 16, offset_width= 16,
             target_height = 224, target_width = 224)
-    
-    #print("il :",input_layer)
-    #print("il2 :",input_layer2)               
-
-
 
     #conv layer1
     conv1 = tf.layers.conv2d(
@@ -171,7 +167,7 @@ def cnn_model_fn(features, labels, mode, num_classes=20):
         strides = 1,
         kernel_size = [3,3],
         padding= "same",
-        activation = tf.nn.relu,  ## check if activation is there or not
+       # activation = tf.nn.relu,  ## check if activation is there or not
         use_bias = True,
         bias_initializer = tf.zeros_initializer(),
         kernel_initializer = tf.random_normal_initializer(0, 0.01))
@@ -235,23 +231,21 @@ def cnn_model_fn(features, labels, mode, num_classes=20):
     loss = tf.identity(tf.losses.sigmoid_cross_entropy(multi_class_labels=labels, logits=dense3), name='loss')
 
 
-
     # Configure the Training Op (for TRAIN mode)
     if mode == tf.estimator.ModeKeys.TRAIN:
+
         #learning schedule
         starter_learning_rate = 0.001
         decay_steps = 10000
-
         learning_rate = tf.train.exponential_decay(
             learning_rate = starter_learning_rate,
             global_step = tf.train.get_global_step(),
             decay_steps = decay_steps,
             decay_rate = 0.5)
         tf.summary.scalar(name ="learning_rate", tensor=learning_rate)
-        tf.summary.image(name = "image", tensor =input_layer, max_outputs = BATCH_SIZE)
+        #tf.summary.image(name = "image", tensor =input_layer, max_outputs = BATCH_SIZE)
         
-
-        optimizer = tf.train.GradientDescentOptimizer(learning_rate= learning_rate)
+        optimizer = tf.train.MomentumOptimizer(learning_rate= learning_rate, momentum = 0.9)
         train_op = optimizer.minimize(
             loss=loss,
             global_step=tf.train.get_global_step())
@@ -299,7 +293,6 @@ def load_pascal(data_dir, split='train'):
     data_list = [d.strip() for d in data_list if d.strip()]  #removing whitespaces and terminal characters
     data_list_file.close()
 
-    
     #initializing data/labels/weight/ arrays
     number_of_images = len(data_list) #number of data points
     print(split ,'data size :', number_of_images, '\n')
@@ -310,7 +303,6 @@ def load_pascal(data_dir, split='train'):
     labels = np.empty((number_of_images, 20), dtype = "int")
     weights = np.empty((number_of_images, 20), dtype = "int")
 
-    
     #loading images
     for i in range(number_of_images):
         
@@ -326,9 +318,6 @@ def load_pascal(data_dir, split='train'):
         img = img.resize((256,256), Image.ANTIALIAS)
         
         data[i,:,:,:] = np.asarray(img, dtype = "float32")
-        #print(data[i,:,20,2], '\n')
-        #img.show()
-        #time.sleep(1)
         img.close()
         del(img)
 
@@ -403,6 +392,7 @@ def _get_el(arr, i):
 
 def main():
     args = parse_args()
+
     # Load training and eval data
     train_data, train_labels, train_weights = load_pascal(
         args.data_dir, split='trainval')
@@ -412,7 +402,7 @@ def main():
     pascal_classifier = tf.estimator.Estimator(
         model_fn=partial(cnn_model_fn,
                          num_classes=train_labels.shape[1]),
-        model_dir="pascal_01")
+        model_dir="logs/task2_1")
     
     #Logging
     tensors_to_log = {"loss": "loss", 
@@ -436,17 +426,24 @@ def main():
         num_epochs=1,
         shuffle=False)
 
-    plt.figure(1)
-    plt.ion()
-    for it in range(4):
+    if plot_map == True:
+        plt.figure(1)
+        plt.ion()
+    if log_map == True:
+        #gtmapFile = open('task2_map/gt_map.txt','w')
+        #ranmapFile = open('task2_map/ran_map.txt','w')
+        #evalmapFile = open('task2_map/eval_map.txt','w')
+        meanmapFile = open('task2_mean_map.txt','w')
+
+
+    for it in range(100):
         print("SET :", it)
+        
+        #train
         pascal_classifier.train(
             input_fn=train_input_fn,
             steps=NUM_ITERS,
             hooks=[logging_hook])
-        
-        #eval_results = pascal_classifier.evaluate(input_fn=eval_input_fn)
-        #print(eval_results)
         
         #compute mAP
         pred = list(pascal_classifier.predict(input_fn=eval_input_fn))
@@ -455,22 +452,28 @@ def main():
             eval_labels, np.random.random(eval_labels.shape),
             eval_weights, average=None)
         print('Random AP: {} mAP'.format(np.mean(rand_AP)))
+        #ground truth mAP
         gt_AP = compute_map(
             eval_labels, eval_labels, eval_weights, average=None)
         print('GT AP: {} mAP'.format(np.mean(gt_AP)))
+        
         AP = compute_map(eval_labels, pred, eval_weights, average=None)
         print('Obtained {} mAP'.format(np.mean(AP)))
         print('per class:')
         for cid, cname in enumerate(CLASS_NAMES):
             print('{}: {}'.format(cname, _get_el(AP, cid)))
-        plt.plot(it, np.mean(AP), 'xr')
-        plt.draw()
-        plt.pause(0.0001)
+        
+        if plot_map == True:
+            plt.plot(it, np.mean(AP), 'xr')
+            plt.draw()
+            plt.pause(0.0001)
 
-    plt.ioff()
+        if log_map  == True:
+            meanmapFile.write("%f \n" %np.mean(gt_AP))
 
-
-
+    
+    if plot_map == True: plt.ioff()
+    if log_map == True: meanmapFile.close()
 
 
 if __name__ == "__main__":

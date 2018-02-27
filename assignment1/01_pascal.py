@@ -17,11 +17,14 @@ from eval import compute_map
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
+plot_map = False
+log_map = True
+
 debug_data_loader = 0 # set to 1 to debug using prints
 test_cnn = 0# set to 1 to train/test only 20 images
-test_cnn_batch = 50
+test_cnn_batch = 200
 BATCH_SIZE = 10
-NUM_ITERS = 4
+NUM_ITERS = 20
 
 CLASS_NAMES = [
     'aeroplane',
@@ -93,8 +96,6 @@ def cnn_model_fn(features, labels, mode, num_classes=20):
     predictions = {
         # Generate predictions (for PREDICT and EVAL mode)
         "classes": tf.argmax(input=logits, axis=1),
-        # Add `softmax_tensor` to the graph. It is used for PREDICT and by the
-        # `logging_hook`.
         "probabilities": tf.nn.sigmoid(logits, name="sigmoid_tensor")
     }
 
@@ -102,7 +103,6 @@ def cnn_model_fn(features, labels, mode, num_classes=20):
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 
     # Calculate Loss (for both TRAIN and EVAL modes)
-    #onehot_labels = tf.one_hot(indices=tf.cast(labels, tf.int32), depth=10)
     loss = tf.identity(tf.losses.sigmoid_cross_entropy(
         multi_class_labels=labels, logits=logits), name='loss')
 
@@ -117,16 +117,10 @@ def cnn_model_fn(features, labels, mode, num_classes=20):
 
     # Add evaluation metrics (for EVAL mode)
     eval_metric_ops = {"accuracy": tf.metrics.accuracy(labels=labels, predictions=predictions["classes"])}
-    '''
-    if mode == tf.estimator.ModeKeys.EVAL:
-        sess = tf.Session()
-        print("eval mode")
-        with sess.as_default():
-            #eval_metric_ops = {"mAP":np.mean(compute_map(labels.eval(), predictions['probabilities'].eval(),weights.eval(), average=None))}
-            eval_metric_ops = 0
-            print("hey")
-        sess.close()    
-'''
+        
+
+
+  
     return tf.estimator.EstimatorSpec(
         mode=mode, loss=loss, eval_metric_ops=eval_metric_ops)
 
@@ -192,9 +186,6 @@ def load_pascal(data_dir, split='train'):
         img = img.resize((256,256), Image.ANTIALIAS)
         
         data[i,:,:,:] = np.asarray(img, dtype = "float32")
-        #print(data[i,:,20,2], '\n')
-        #img.show()
-        #time.sleep(1)
         img.close()
         del(img)
 
@@ -277,11 +268,13 @@ def main():
 
     pascal_classifier = tf.estimator.Estimator(
         model_fn=partial(cnn_model_fn,
-                         num_classes=train_labels.shape[1]),
-        model_dir="pascal_01")
+        num_classes=train_labels.shape[1]),
+        model_dir="logs/task1_1")
     tensors_to_log = {"loss": "loss"}
+    
     logging_hook = tf.train.LoggingTensorHook(
-        tensors=tensors_to_log, every_n_iter=1)
+        tensors=tensors_to_log, every_n_iter=10)
+    
     # Train the model
     train_input_fn = tf.estimator.inputs.numpy_input_fn(
         x={"x": train_data, "w": train_weights},
@@ -289,43 +282,61 @@ def main():
         batch_size=BATCH_SIZE,
         num_epochs=None,
         shuffle=True)
+    # Evaluate the model and print results
+    eval_input_fn = tf.estimator.inputs.numpy_input_fn(
+        x={"x": eval_data, "w": eval_weights},
+        y=eval_labels,
+        num_epochs=1,
+        shuffle=False)
 
-    plt.figure(1)
-    plt.ion()
-    for it in range(4):
+    if plot_map == True:
+        plt.figure(1)
+        plt.ion()
+    if log_map == True:
+        #gtmapFile = open('task1_map/gt_map.txt','w')
+        #ranmapFile = open('task1_map/ran_map.txt','w')
+        #evalmapFile = open('task1_map/eval_map.txt','w')
+        meanmapFile = open('task1_mean_map.txt','w')
+
+
+    for it in range(50):
         print("SET :", it)
+        
+        #train
         pascal_classifier.train(
             input_fn=train_input_fn,
             steps=NUM_ITERS,
             hooks=[logging_hook])
-        # Evaluate the model and print results
-        eval_input_fn = tf.estimator.inputs.numpy_input_fn(
-            x={"x": eval_data, "w": eval_weights},
-            y=eval_labels,
-            num_epochs=1,
-            shuffle=False)
-        #eval_results = pascal_classifier.evaluate(input_fn=eval_input_fn)
-        #print(eval_results)
+        
+        #compute mAP
         pred = list(pascal_classifier.predict(input_fn=eval_input_fn))
         pred = np.stack([p['probabilities'] for p in pred])
         rand_AP = compute_map(
             eval_labels, np.random.random(eval_labels.shape),
             eval_weights, average=None)
         print('Random AP: {} mAP'.format(np.mean(rand_AP)))
+        #ground truth mAP
         gt_AP = compute_map(
             eval_labels, eval_labels, eval_weights, average=None)
         print('GT AP: {} mAP'.format(np.mean(gt_AP)))
+        
         AP = compute_map(eval_labels, pred, eval_weights, average=None)
         print('Obtained {} mAP'.format(np.mean(AP)))
         print('per class:')
         for cid, cname in enumerate(CLASS_NAMES):
             print('{}: {}'.format(cname, _get_el(AP, cid)))
+        
+        if plot_map == True:
+            plt.plot(it, np.mean(AP), 'xr')
+            plt.draw()
+            plt.pause(0.0001)
 
-        plt.plot(it, np.mean(AP), 'xr')
-        plt.draw()
-        plt.pause(0.0001)
+        if log_map  == True:
+            meanmapFile.write("%f \n" %np.mean(gt_AP))
 
-    plt.ioff()
+    
+    if plot_map == True: plt.ioff()
+    if log_map == True: meanmapFile.close()
 
 
 
