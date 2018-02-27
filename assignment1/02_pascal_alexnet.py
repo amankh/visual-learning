@@ -13,6 +13,7 @@ from functools import partial
 import matplotlib.pyplot as plt
 
 from eval import compute_map
+from tensorflow.core.framework import summary_pb2
 #import models
 
 tf.logging.set_verbosity(tf.logging.INFO)
@@ -22,9 +23,12 @@ log_map = True
 
 debug_data_loader = 0 # set to 1 to debug using prints
 test_cnn = 0# set to 1 to train/test only 20 images
-test_cnn_batch = 10
+test_cnn_batch = 100
 BATCH_SIZE = 10
 NUM_ITERS = 400
+LOG_DIR = 'logs/task2_2'
+
+
 
 CLASS_NAMES = [
     'aeroplane',
@@ -48,6 +52,15 @@ CLASS_NAMES = [
     'train',
     'tvmonitor',
 ]
+
+def summary_var(log_dir, name, val, step):
+    writer = tf.summary.FileWriterCache.get(log_dir)
+    summary_proto = summary_pb2.Summary()
+    value = summary_proto.value.add()
+    value.tag = name
+    value.simple_value = float(val)
+    writer.add_summary(summary_proto, step)
+    writer.flush()
 
 
 def cnn_model_fn(features, labels, mode, num_classes=20):
@@ -88,7 +101,7 @@ def cnn_model_fn(features, labels, mode, num_classes=20):
         input_layer = tf.map_fn(lambda img: tf.image.random_flip_left_right(img), input_layer)
         
     if mode == tf.estimator.ModeKeys.PREDICT:
-        input_layer = tf.map_fn(lambda img: tf.image.random_flip_left_right(img, 224, 224), input_layer)
+        input_layer = tf.map_fn(lambda img: tf.image.resize_image_with_crop_or_pad(img, 224, 224), input_layer2)
         #input_layer = tf.image.crop_to_bounding_box(input_layer2,
         #    offset_height = 16, offset_width= 16,
         #    target_height = 224, target_width = 224)
@@ -160,7 +173,7 @@ def cnn_model_fn(features, labels, mode, num_classes=20):
         strides = 1,
         kernel_size = [3,3],
         padding= "same",
-       # activation = tf.nn.relu,  ## check if activation is there or not
+        activation = tf.nn.relu,  ## check if activation is there or not
         use_bias = True,
         bias_initializer = tf.zeros_initializer(),
         kernel_initializer = tf.random_normal_initializer(0, 0.01))
@@ -198,7 +211,7 @@ def cnn_model_fn(features, labels, mode, num_classes=20):
         bias_initializer = tf.zeros_initializer(),
         kernel_initializer = tf.random_normal_initializer(0, 0.01))
     
-    #drropout2
+    #dropout2
     dropout2 = tf.layers.dropout(
         inputs = dense2,
         rate = 0.5,
@@ -394,13 +407,12 @@ def main():
 
     pascal_classifier = tf.estimator.Estimator(
         model_fn=partial(cnn_model_fn,
-                         num_classes=train_labels.shape[1]),
-        model_dir="logs/task2_1")
+        num_classes=train_labels.shape[1]),
+        model_dir=LOG_DIR)
     
     #Logging
     tensors_to_log = {"loss": "loss", 
-    "global_step" : "global_step",
-    "learning_rate" : "learning_rate"}
+    "global_step" : "global_step"}
     logging_hook = tf.train.LoggingTensorHook(
         tensors=tensors_to_log, every_n_iter=1)
     
@@ -428,6 +440,8 @@ def main():
         #evalmapFile = open('task2_map/eval_map.txt','w')
         meanmapFile = open('task2_mean_map.txt','w')
 
+    #print(pascal_classifier.get_variable_names())
+
 
     for it in range(100):
         print("SET :", it)
@@ -440,7 +454,7 @@ def main():
         
         #compute mAP
         pred = list(pascal_classifier.predict(input_fn=eval_input_fn))
-        pred = np.stack([p['probabilities'] for p in prgited])
+        pred = np.stack([p['probabilities'] for p in pred])
         rand_AP = compute_map(
             eval_labels, np.random.random(eval_labels.shape),
             eval_weights, average=None)
@@ -455,14 +469,22 @@ def main():
         print('per class:')
         for cid, cname in enumerate(CLASS_NAMES):
             print('{}: {}'.format(cname, _get_el(AP, cid)))
+            class_map = _get_el(AP,cid)
+            summary_var(LOG_DIR, '{} mAP'.format(cname) ,class_map, it*NUM_ITERS)
+            
+            
+
         
+        #writing map to tensorboard
+        summary_var(LOG_DIR, "Obtained_mAP", np.mean(AP), it*NUM_ITERS)
+
         if plot_map == True:
             plt.plot(it, np.mean(AP), 'xr')
             plt.draw()
             plt.pause(0.0001)
 
         if log_map  == True:
-            meanmapFile.write("%f \n" %np.mean(gt_AP))
+            meanmapFile.write("%f \n" %np.mean(AP))
 
     
     if plot_map == True: plt.ioff()
