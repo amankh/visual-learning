@@ -87,18 +87,11 @@ def cnn_model_fn(features, labels, mode, num_classes=20):
             size = [BATCH_SIZE,224,224,3])
         input_layer = tf.map_fn(lambda img: tf.image.random_flip_left_right(img), input_layer)
         
-        '''
-        unstacked_images = tf.unstack(input_layer, axis =0)
-        for img in unstacked_images:
-            img = tf.image.random_flip_left_right(img)
-            img = tf.image.flip_left_right(img)
-        input_layer = tf.stack(unstacked_images)
-        '''
-
     if mode == tf.estimator.ModeKeys.PREDICT:
-        input_layer = tf.image.crop_to_bounding_box(input_layer2,
-            offset_height = 16, offset_width= 16,
-            target_height = 224, target_width = 224)
+        input_layer = tf.map_fn(lambda img: tf.image.random_flip_left_right(img, 224, 224), input_layer)
+        #input_layer = tf.image.crop_to_bounding_box(input_layer2,
+        #    offset_height = 16, offset_width= 16,
+        #    target_height = 224, target_width = 224)
 
     #conv layer1
     conv1 = tf.layers.conv2d(
@@ -447,7 +440,7 @@ def main():
         
         #compute mAP
         pred = list(pascal_classifier.predict(input_fn=eval_input_fn))
-        pred = np.stack([p['probabilities'] for p in pred])
+        pred = np.stack([p['probabilities'] for p in prgited])
         rand_AP = compute_map(
             eval_labels, np.random.random(eval_labels.shape),
             eval_weights, average=None)
